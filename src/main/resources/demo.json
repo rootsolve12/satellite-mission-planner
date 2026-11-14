@@ -1,0 +1,39 @@
+{
+  "satellites": [
+    {
+      "name": "VANGUARD-1 / Science",
+      "line1": "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753",
+      "line2": "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667",
+      "priority": 9,
+      "band": "UHF"
+    },
+    {
+      "name": "VANGUARD-1 / Education",
+      "line1": "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753",
+      "line2": "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667",
+      "priority": 3,
+      "band": "UHF"
+    }
+  ],
+  "stations": [
+    {
+      "name": "Chennai",
+      "latitude": 13.0827,
+      "longitude": 80.2707,
+      "altitude": 6,
+      "minElevation": 10,
+      "antennas": 1,
+      "band": "UHF"
+    },
+    {
+      "name": "Bengaluru",
+      "latitude": 12.9716,
+      "longitude": 77.5946,
+      "altitude": 920,
+      "minElevation": 10,
+      "antennas": 1,
+      "band": "UHF"
+    }
+  ],
+  "maintenance": []
+}
