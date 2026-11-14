@@ -1,4 +1,4 @@
-package edu.simats.planner;
+package io.orbit.planner;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.*;

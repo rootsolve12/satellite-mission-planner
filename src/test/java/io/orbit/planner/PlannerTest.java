@@ -1,4 +1,4 @@
-package edu.simats.planner;
+package io.orbit.planner;
 
 import static org.junit.jupiter.api.Assertions.*;
 

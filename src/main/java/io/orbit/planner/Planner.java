@@ -1,4 +1,4 @@
-package edu.simats.planner;
+package io.orbit.planner;
 
 import java.util.*;
 import org.orekit.bodies.*;
@@ -49,7 +49,7 @@ public class Planner {
         .getDataProvidersManager()
         .addProvider(new ClasspathCrawler("orekit/tai-utc.dat"));
     utc = TimeScalesFactory.getUTC();
-    // TEME -> PEF rotation without EOP downloads: appropriate for a classroom demo.
+    // TEME -> PEF rotation without EOP downloads: a simplified demonstration frame.
     earth =
         new OneAxisEllipsoid(
             Constants.WGS84_EARTH_EQUATORIAL_RADIUS,

@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-java -jar satellite-mission-planner-1.0.0.jar %*
+java -jar satellite-mission-planner-2.0.0.jar %*
 pause

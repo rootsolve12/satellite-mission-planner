@@ -1,14 +1,9 @@
-# Validation
+# Verification
 
-Validated using Java 17 compiler, Java 21 runtime, Maven 3.9.9, Node 24 and Chromium.
+- Java: published SGP4 epoch position, window prediction, priority ordering, non-overlap, interval boundaries, maintenance, band compatibility and validation.
+- Browser engine: prediction, conflict-free accepted reservations, priority changes, maintenance, frequency incompatibility, ground-track generation and invalid coordinates.
+- Default browser scenario: 54 candidate windows, 18 scheduled contacts across three stations.
+- TypeScript checking and Vite production build pass.
+- Interactive browser QA for this revision is unavailable because the managed desktop JavaScript tool is absent. Deployment and engine verification do not establish pixel-level browser QA.
 
-- Five JUnit tests: passed, zero failures/errors.
-- Frontend TypeScript check and Vite production build: passed.
-- Executable JAR: starts successfully and serves the dashboard at localhost:8080.
-- Default 24-hour plan: 28 visibility windows, 14 accepted, 14 rejected.
-- REST: configuration read/write, schedule generation, replay telemetry: passed.
-- Invalid 100-hour horizon: HTTP 400.
-- Headless Chromium: generated schedule, opened pass replay and configuration; no browser page errors.
-- SGP4 epoch position checked against the public Vanguard 1 Vallado reference with 20-metre tolerance. This does not validate the station visibility approximation or operational prediction accuracy.
-
-The screenshot in this directory comes from the packaged application, not a mockup.
+The reference SGP4 check does not certify operational visibility accuracy. Battery, temperature and signal are synthetic.

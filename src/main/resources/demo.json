@@ -1,14 +1,21 @@
 {
   "satellites": [
     {
-      "name": "VANGUARD-1 / Science",
+      "name": "Vanguard \u00b7 Science",
       "line1": "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753",
       "line2": "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667",
       "priority": 9,
       "band": "UHF"
     },
     {
-      "name": "VANGUARD-1 / Education",
+      "name": "Vanguard \u00b7 Survey",
+      "line1": "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753",
+      "line2": "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667",
+      "priority": 6,
+      "band": "UHF"
+    },
+    {
+      "name": "Vanguard \u00b7 Relay",
       "line1": "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753",
       "line2": "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667",
       "priority": 3,
@@ -26,10 +33,19 @@
       "band": "UHF"
     },
     {
-      "name": "Bengaluru",
-      "latitude": 12.9716,
-      "longitude": 77.5946,
-      "altitude": 920,
+      "name": "Canberra",
+      "latitude": -35.398,
+      "longitude": 148.981,
+      "altitude": 550,
+      "minElevation": 10,
+      "antennas": 1,
+      "band": "UHF"
+    },
+    {
+      "name": "Madrid",
+      "latitude": 40.427,
+      "longitude": -4.251,
+      "altitude": 731,
       "minElevation": 10,
       "antennas": 1,
       "band": "UHF"
