@@ -87,7 +87,8 @@ function App() {
     [maintenanceStation, setMaintenanceStation] = useState("Chennai"),
     [maintStart, setMaintStart] = useState(EPOCH),
     [maintEnd, setMaintEnd] = useState("2000-06-28T06:00");
-  const base = Date.parse(start + "Z");
+  const parsedStart = Date.parse(start + "Z");
+  const base = Number.isFinite(parsedStart) ? parsedStart : Date.parse(EPOCH + "Z");
   const current = base + minute * 60000;
   async function run(c: Config = config, s = start, h = hours) {
     setBusy(true);
