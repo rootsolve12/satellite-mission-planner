@@ -1,7 +1,7 @@
-Satellite Mission Planning & Ground Station Management — Orbit Operations
+Orbit Operations — Satellite Mission Planning & Ground Station Management
 
-Download and extract satellite-mission-planner-demo.zip. Install Java 17+, run run.bat (Windows) or sh run.sh (macOS/Linux), and open http://localhost:8080.
+Install Java 17+, extract satellite-mission-planner-demo.zip, run run.bat (Windows) or sh run.sh (macOS/Linux), and open http://localhost:8080.
 
-Includes a redesigned dashboard, world map and orbital ground tracks, interactive replay, antenna timeline, mission and station forms, maintenance planning, conflict explanations and CSV export.
+This update includes an Earth-horizon and orbital-grid background across all workspaces, mission/station registration and removal, validated editing, synchronized planning/replay, correct maintenance handling, a responsive antenna timeline, complete CSV exports, and saved planning reports and simulated telemetry logs.
 
-Orbit prediction uses historical reference TLEs. Telemetry is simulated. See README for model assumptions and architecture.
+21 frontend tests and 8 Java tests cover the planning, resource allocation, monitoring and persistence workflows. See docs/VALIDATION.md for test coverage and limits. Historical orbital data and synthetic telemetry remain labelled.

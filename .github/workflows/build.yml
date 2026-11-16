@@ -20,7 +20,7 @@ jobs:
       - run: sh build.sh
       - run: |
           mkdir demo
-          cp target/satellite-mission-planner-2.0.0.jar run.sh run.bat README.md demo/
+          cp target/satellite-mission-planner-2.1.0.jar run.sh run.bat README.md demo/
           cd demo && zip -r ../satellite-mission-planner-demo.zip .
       - uses: actions/upload-artifact@v4
         with:

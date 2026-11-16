@@ -86,6 +86,10 @@ export function position(s: Satellite, ms: number) {
     throw Error(
       "Could not propagate TLE. Check the orbital elements and date.",
     );
+  if (![r.position.x, r.position.y, r.position.z].every(Number.isFinite))
+    throw Error(
+      "Orbit returned an invalid position. Check the TLE epoch and planning date.",
+    );
   const g = orbit.eciToGeodetic(r.position, orbit.gstime(new Date(ms)));
   return {
     satellite: s.name,
@@ -100,47 +104,144 @@ export function path(s: Satellite, ms: number) {
   );
 }
 export function validate(c: Config) {
+  if (
+    !c ||
+    !Array.isArray(c.satellites) ||
+    !Array.isArray(c.stations) ||
+    !Array.isArray(c.maintenance)
+  )
+    throw Error("Mission, station and maintenance lists are required.");
   if (!c.satellites.length || !c.stations.length)
-    throw Error("Add at least one mission and station.");
+    throw Error("Keep at least one mission and station.");
+  if (c.satellites.length > 20 || c.stations.length > 20)
+    throw Error("The demo supports up to 20 missions and 20 stations.");
+  const name = (s: unknown) => typeof s === "string" && s.trim().length > 0;
   for (const s of c.satellites) {
     if (
-      !s.name.trim() ||
+      !s ||
+      !name(s.name) ||
+      !Number.isInteger(s.priority) ||
       s.priority < 1 ||
       s.priority > 10 ||
-      !s.band ||
-      !s.line1.startsWith("1 ") ||
-      !s.line2.startsWith("2 ")
+      !name(s.band)
     )
-      throw Error("Check mission name, band, priority and TLE.");
-    position(s, Date.parse(EPOCH + "Z"));
-  }
-  for (const s of c.stations) {
+      throw Error(
+        "Mission name, frequency band and integer priority from 1–10 are required.",
+      );
+    for (const [i, line] of [s.line1, s.line2].entries()) {
+      if (
+        typeof line !== "string" ||
+        line.length !== 69 ||
+        !line.startsWith(i + 1 + " ") ||
+        !/^\d$/.test(line[68])
+      )
+        throw Error(
+          "TLE lines must be 69 characters with the correct line number and checksum.",
+        );
+      const checksum =
+        [...line.slice(0, 68)].reduce(
+          (n, c) => n + (/\d/.test(c) ? Number(c) : c === "-" ? 1 : 0),
+          0,
+        ) % 10;
+      if (checksum !== Number(line[68]))
+        throw Error(
+          "TLE checksum is invalid. Copy both complete orbital element lines.",
+        );
+    }
+    if (s.line1.slice(2, 7) !== s.line2.slice(2, 7))
+      throw Error("Both TLE lines must describe the same satellite.");
+    const rec = orbit.twoline2satrec(s.line1, s.line2);
     if (
-      !s.name.trim() ||
+      rec.error ||
+      !Number.isFinite(rec.jdsatepoch) ||
+      !Number.isFinite(rec.no) ||
+      rec.no <= 0
+    )
+      throw Error("Invalid TLE orbital elements.");
+    position(s, (rec.jdsatepoch - 2440587.5) * 86400000);
+  }
+  for (const s of c.stations)
+    if (
+      !s ||
+      !name(s.name) ||
+      !name(s.band) ||
       !Number.isFinite(s.latitude) ||
       Math.abs(s.latitude) > 90 ||
       !Number.isFinite(s.longitude) ||
       Math.abs(s.longitude) > 180 ||
+      !Number.isFinite(s.altitude) ||
+      s.altitude < 0 ||
+      !Number.isFinite(s.minElevation) ||
       s.minElevation < 0 ||
       s.minElevation >= 90 ||
+      !Number.isInteger(s.antennas) ||
       s.antennas < 1 ||
       s.antennas > 10
     )
       throw Error(
-        "Check station coordinates, antenna count and minimum elevation.",
+        "Stations need valid coordinates, nonnegative altitude, elevation from 0–89.99°, frequency band and 1–10 whole antennas.",
       );
-  }
   if (
-    new Set(c.satellites.map((s) => s.name)).size !== c.satellites.length ||
-    new Set(c.stations.map((s) => s.name)).size !== c.stations.length
+    new Set(c.satellites.map((s) => s.name.trim().toLowerCase())).size !==
+      c.satellites.length ||
+    new Set(c.stations.map((s) => s.name.trim().toLowerCase())).size !==
+      c.stations.length
   )
     throw Error("Mission and station names must be unique.");
   for (const m of c.maintenance)
     if (
+      !m ||
       !c.stations.some((s) => s.name === m.station) ||
+      !Number.isFinite(Date.parse(m.start)) ||
       !(Date.parse(m.end) > Date.parse(m.start))
     )
-      throw Error("Maintenance needs a valid station and end after start.");
+      throw Error(
+        "Maintenance needs a known station and a valid end after its start.",
+      );
+}
+export function planningTime(start: string, hours: number) {
+  const t = Date.parse(start);
+  if (
+    !Number.isFinite(t) ||
+    !start.includes("T") ||
+    new Date(t).toISOString().slice(0, 10) !== start.slice(0, 10)
+  )
+    throw Error("Choose a valid UTC planning date.");
+  if (!Number.isInteger(hours) || hours < 1 || hours > 72)
+    throw Error("Planning horizon must be a whole number from 1–72 hours.");
+  return t;
+}
+export function planCSV(passes: Pass[]) {
+  const fields = [
+    "satellite",
+    "station",
+    "aos",
+    "los",
+    "durationMinutes",
+    "maxElevation",
+    "riseAzimuth",
+    "setAzimuth",
+    "priority",
+    "band",
+    "antenna",
+    "status",
+    "reason",
+  ] as const;
+  return [
+    fields.join(","),
+    ...passes.map((p) => {
+      const row = {
+        ...p,
+        durationMinutes: (
+          (Date.parse(p.los) - Date.parse(p.aos)) /
+          60000
+        ).toFixed(2),
+      };
+      return fields
+        .map((k) => '"' + String(row[k]).replaceAll('"', '""') + '"')
+        .join(",");
+    }),
+  ].join("\r\n");
 }
 export const overlap = (a: Pass, b: Pass) =>
   Date.parse(a.aos) < Date.parse(b.los) &&
@@ -156,7 +257,7 @@ export function schedule(c: Config, passes: Pass[]) {
     const st = c.stations.find((s) => s.name === p.station)!;
     let antenna = 0,
       reason = "All compatible antennas occupied";
-    if (st.band.toUpperCase() !== p.band.toUpperCase())
+    if (st.band.trim().toUpperCase() !== p.band.trim().toUpperCase())
       reason = "Incompatible frequency band";
     else if (
       c.maintenance.some(
@@ -195,9 +296,7 @@ export function schedule(c: Config, passes: Pass[]) {
 }
 export function predict(c: Config, start: string, hours: number) {
   validate(c);
-  if (hours < 1 || hours > 72)
-    throw Error("Planning horizon must be 1–72 hours.");
-  const begin = Date.parse(start),
+  const begin = planningTime(start, hours),
     end = begin + hours * 3600000;
   if (!Number.isFinite(begin)) throw Error("Choose a valid planning date.");
   const out: Pass[] = [];
@@ -213,7 +312,8 @@ export function predict(c: Config, start: string, hours: number) {
         peak = 0,
         rise = 0,
         last = 0;
-      const add = (los: number) =>
+      const add = (los: number) => {
+        if (aos === null || los <= aos) return;
         out.push({
           satellite: s.name,
           station: st.name,
@@ -228,6 +328,7 @@ export function predict(c: Config, start: string, hours: number) {
           status: "CANDIDATE",
           reason: "",
         });
+      };
       for (let t = begin; t <= end; t += 20000) {
         const d = new Date(t),
           v = orbit.propagate(rec, d);
@@ -258,10 +359,17 @@ export function predict(c: Config, start: string, hours: number) {
 }
 export const browserDemo = import.meta.env.VITE_DEMO_MODE === "true";
 export async function generate(c: Config, start: string, hours: number) {
-  if (browserDemo) return predict(c, start, hours);
-  const r = await fetch(
-    "/api/plan?start=" + encodeURIComponent(start) + "&hours=" + hours,
-  );
+  validate(c);
+  planningTime(start, hours);
+  if (browserDemo) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return predict(c, start, hours);
+  }
+  const r = await fetch("/api/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config: c, start, hours }),
+  });
   const d = await r.json();
   if (!r.ok) throw Error(d.error || d.message || "Prediction failed");
   return d.passes as Pass[];
@@ -269,10 +377,11 @@ export async function generate(c: Config, start: string, hours: number) {
 export async function loadConfig(): Promise<Config> {
   if (browserDemo) {
     try {
-      return (
+      const c =
         JSON.parse(localStorage.getItem("orbit-config-v2") || "null") ||
-        copyInitial()
-      );
+        copyInitial();
+      validate(c);
+      return c;
     } catch {
       return copyInitial();
     }

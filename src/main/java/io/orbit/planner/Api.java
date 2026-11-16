@@ -19,6 +19,9 @@ public class Api {
     db = d;
     json = j;
     db.execute("CREATE TABLE IF NOT EXISTS configuration (id INT PRIMARY KEY, body CLOB)");
+    db.execute("CREATE TABLE IF NOT EXISTS history (id INT PRIMARY KEY, body CLOB)");
+    if (db.queryForObject("SELECT COUNT(*) FROM history", Integer.class) == 0)
+      db.update("INSERT INTO history VALUES (1, ?)", "{\"plans\":[],\"telemetry\":[]}");
     if (db.queryForObject("SELECT COUNT(*) FROM configuration", Integer.class) == 0) {
       String demo =
           new String(
@@ -63,6 +66,35 @@ public class Api {
         hours,
         "note",
         "20-second sampling; historical demonstration TLEs; simulated telemetry");
+  }
+
+  public record PlanRequest(Planner.Config config, String start, int hours) {}
+
+  @PostMapping("/plan")
+  public Map<String, Object> preview(@RequestBody PlanRequest r) {
+    if (r == null || r.start() == null)
+      throw new IllegalArgumentException("Planning start is required");
+    return Map.of(
+        "passes", planner.schedule(r.config(), planner.predict(r.config(), r.start(), r.hours())));
+  }
+
+  @GetMapping("/history")
+  public com.fasterxml.jackson.databind.JsonNode history() throws Exception {
+    return json.readTree(db.queryForObject("SELECT body FROM history WHERE id=1", String.class));
+  }
+
+  @PutMapping("/history")
+  public com.fasterxml.jackson.databind.JsonNode history(
+      @RequestBody com.fasterxml.jackson.databind.JsonNode h) throws Exception {
+    if (h == null
+        || !h.path("plans").isArray()
+        || !h.path("telemetry").isArray()
+        || h.path("plans").size() > 25
+        || h.path("telemetry").size() > 100)
+      throw new IllegalArgumentException(
+          "History requires up to 25 plans and 100 telemetry snapshots");
+    db.update("UPDATE history SET body=? WHERE id=1", json.writeValueAsString(h));
+    return h;
   }
 
   @GetMapping("/monitor")

@@ -7,14 +7,15 @@
 [Open the interactive demo](https://orbit-operations-mission-demo.exuberantkangaroo.chatgpt.site)
 
 
-The interface includes a global ground-track map, antenna allocation timeline, editable missions and ground stations, maintenance windows, conflict reasons, schedule CSV export, and telemetry replay.
+The interface uses a locally bundled Earth-horizon and orbital-grid background. It includes a global ground-track map, antenna allocation timeline, editable missions and ground stations, maintenance windows, conflict reasons, schedule CSV export, and telemetry replay.
 
 1. Open the Overview: a 24-hour sample schedule is generated automatically.
-2. Use Mission planning → Edit mission to change a priority. Save and recalculate to compare allocation winners.
-3. Use Ground stations to change antenna capacity, frequency bands or minimum elevation; add maintenance to block a station.
+2. Use Mission planning → Register mission to add a satellite, or Edit mission to change a priority. Save and recalculate to compare allocation winners.
+3. Use Ground stations → Register station to add a ground facility, or configure an existing station to change antenna capacity, frequency bands or minimum elevation; add maintenance to block a station.
 4. Use Pass schedule to filter conflicts or scheduled passes and select a contact.
 5. In Monitoring, play or scrub the orbital replay and inspect the selected session.
-6. Reset demo restores the sample configuration.
+6. Use Reports to inspect saved planning outcomes, station utilization and mission allocation counts. Record simulated telemetry snapshots from Monitoring, then export history as JSON.
+7. Reset demo restores the sample configuration. Reports retain the last 25 plans and 100 telemetry snapshots.
 
 The sample uses three mission identities on the historical Vanguard reference orbit to make resource competition visible. Stations are Chennai, Canberra and Madrid. Start at **28 June 2000** to match the supplied orbital elements. These are demonstration missions, not live satellite operations.
 
@@ -47,7 +48,7 @@ Prerequisites: Java 17+, Maven 3.9+, Node 20.19+ or 22.12+.
 
 ```sh
 sh build.sh
-java -jar target/satellite-mission-planner-2.0.0.jar
+java -jar target/satellite-mission-planner-2.1.0.jar
 ```
 
 For the standalone browser edition:
@@ -65,15 +66,19 @@ Serve `frontend/dist/` using a static host. For Java, build without `VITE_DEMO_M
 - `GET /api/config` — missions, stations and maintenance.
 - `PUT /api/config` — validated configuration replacement.
 - `GET /api/plan?start=2000-06-28T00:00:00Z&hours=24` — predicted windows and allocation decisions.
+- `POST /api/plan` — preview `{config,start,hours}` without modifying saved configuration.
+- `GET /api/history` / `PUT /api/history` — bounded plan reports and telemetry log.
 - `GET /api/monitor?time=2000-06-28T01:00:00Z` — propagated positions and synthetic telemetry.
 
 ## Model boundaries
 
 Visibility uses 20-second sampling. AOS, LOS and peak elevation are approximate; windows at the horizon boundary are clipped. The Java frame uses simplified Earth-orientation handling. Browser and Java predictions can differ slightly due to frame and numerical implementations. Updating the TLE requires choosing a matching date. No orbital accuracy certification is claimed.
 
-Battery, temperature and signal are simulated. Signal appears only during a scheduled replay contact. The application does not connect to spacecraft. Frequency bands are compatibility labels; RF link budgets, antenna slew, partial contacts, continuous tracking streams, authentication and long-term alert histories are outside this demo. Three sample missions share an orbit intentionally; real missions should have distinct orbital elements. Limits: 20 missions/stations in the Java API, 72-hour plans, 1–10 antennas per station.
+Battery, temperature and signal are simulated. Signal appears only during a scheduled replay contact. The application does not connect to spacecraft. Frequency bands are compatibility labels; RF link budgets, antenna slew, partial contacts, continuous tracking streams, authentication and unbounded operational alert histories are outside this demo. Three sample missions share an orbit intentionally; real missions should have distinct orbital elements. Limits: 20 missions/stations in the Java API, 72-hour plans, 1–10 antennas per station.
 
 ## Validation and attribution
+
+Run `npm test --prefix frontend` for 21 frontend interaction/engine tests and `mvn test` for 8 Java tests. The build script and GitHub Actions run both suites.
 
 Java tests cover published Vallado epoch position, visibility generation, conflict-free reservations, priority, boundaries, maintenance, band compatibility and invalid input. Browser engine checks cover prediction, non-overlap, priority changes, maintenance, incompatible bands, ground-track generation and validation. TypeScript and production builds run during verification.
 

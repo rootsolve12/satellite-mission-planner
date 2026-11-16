@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
-import { createRoot } from "react-dom/client";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Config,
   Pass,
@@ -8,14 +7,23 @@ import {
   EPOCH,
   position,
   path,
-  initial,
   copyInitial,
   generate,
   loadConfig,
   saveConfig,
   browserDemo,
+  planCSV,
+  planningTime,
 } from "./engine";
 import "./style.css";
+import {
+  History,
+  emptyHistory,
+  report,
+  telemetry,
+  readHistory,
+  storeHistory,
+} from "./history";
 const colors = ["#80f5c4", "#bba6ff", "#ffca83"];
 const clock = (s: string) => new Date(s).toISOString().slice(11, 19);
 const short = (s: string) => s.replace("Vanguard · ", "");
@@ -64,12 +72,15 @@ function Icon({ name }: { name: string }) {
     </svg>
   );
 }
-function App() {
+export function App() {
+  const operation = useRef(false);
   const [tab, setTab] = useState("Overview"),
     [config, setConfig] = useState<Config>(copyInitial()),
     [passes, setPasses] = useState<Pass[]>([]),
-    [start, setStart] = useState(EPOCH),
-    [hours, setHours] = useState(24),
+    [history, setHistory] = useState<History>(emptyHistory()),
+    [draftStart, setStart] = useState(EPOCH),
+    [draftHours, setHours] = useState(24),
+    [plan, setPlan] = useState({ start: EPOCH, hours: 24 }),
     [busy, setBusy] = useState(true),
     [error, setError] = useState(""),
     [toast, setToast] = useState(""),
@@ -87,22 +98,51 @@ function App() {
     [maintenanceStation, setMaintenanceStation] = useState("Chennai"),
     [maintStart, setMaintStart] = useState(EPOCH),
     [maintEnd, setMaintEnd] = useState("2000-06-28T06:00");
-  const parsedStart = Date.parse(start + "Z");
-  const base = Number.isFinite(parsedStart) ? parsedStart : Date.parse(EPOCH + "Z");
+  const { start, hours } = plan;
+  const base = Date.parse(start + "Z");
   const current = base + minute * 60000;
-  async function run(c: Config = config, s = start, h = hours) {
+  const pendingWindow = draftStart !== start || draftHours !== hours;
+  async function run(c: Config = config, s = draftStart, h = draftHours) {
+    if (operation.current) return null;
+    operation.current = true;
     setBusy(true);
     setError("");
     try {
-      await saveConfig(c);
+      planningTime(s + "Z", h);
       const p = await generate(c, new Date(s + "Z").toISOString(), h);
+      await saveConfig(c);
+      try {
+        const old = await readHistory();
+        setHistory(
+          await storeHistory({
+            ...old,
+            plans: [
+              report(c, p, new Date(s + "Z").toISOString(), h),
+              ...old.plans,
+            ],
+          }),
+        );
+      } catch {
+        notify("Schedule generated, but report history could not be saved.");
+      }
       setPasses(p);
       setConfig(c);
+      setPlan({ start: s, hours: h });
+      setSelected(null);
+      setPlaying(false);
+      setMinute((m) => Math.max(0, Math.min(m, h * 60 - 1 / 3)));
+      setStationFilter((f) =>
+        c.stations.some((st) => st.name === f) ? f : "All stations",
+      );
+      setMaintenanceStation((st) =>
+        c.stations.some((s) => s.name === st) ? st : c.stations[0].name,
+      );
       return p;
     } catch (e) {
       setError(String(e));
       return null;
     } finally {
+      operation.current = false;
       setBusy(false);
     }
   }
@@ -116,12 +156,16 @@ function App() {
     fetch("/world.json")
       .then((r) => r.json())
       .then(setWorld)
-      .catch(() => {});
+      .catch(() =>
+        setToast(
+          "Map outline unavailable. Orbit tracks and scheduling still work.",
+        ),
+      );
   }, []);
   useEffect(() => {
     if (!playing) return;
     const timer = setInterval(
-      () => setMinute((m) => (m + 1) % (hours * 60)),
+      () => setMinute((m) => (m + 1 / 3) % (hours * 60)),
       700,
     );
     return () => clearInterval(timer);
@@ -132,6 +176,40 @@ function App() {
       return () => clearTimeout(t);
     }
   }, [toast]);
+  useEffect(() => {
+    if (!editing) return;
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    const fields = () =>
+      Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          "button:not(:disabled),input,textarea,select",
+        ) || [],
+      );
+    fields()
+      .find((e) => e.tagName === "INPUT")
+      ?.focus();
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) {
+        setEditing(null);
+        setError("");
+      }
+      if (e.key === "Tab") {
+        const a = fields();
+        if (!a.length) return;
+        const first = a[0],
+          last = a[a.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [editing, busy]);
   const accepted = passes.filter((p) => p.antenna > 0),
     rejected = passes.filter((p) => !p.antenna),
     duration = accepted.reduce(
@@ -148,23 +226,50 @@ function App() {
         (filter === "Scheduled" ? p.antenna > 0 : p.antenna === 0)) &&
       (stationFilter === "All stations" || p.station === stationFilter),
   );
-  const tracks = useMemo(() => {
+  const tracking = useMemo(() => {
     try {
-      return config.satellites.map((s) => ({
-        ...position(s, current),
-        points: path(s, current),
-      }));
-    } catch {
-      return [];
+      return {
+        tracks: config.satellites.map((s) => ({
+          ...position(s, current),
+          points: path(s, current),
+        })),
+        error: "",
+      };
+    } catch (e) {
+      return { tracks: [], error: String(e) };
     }
   }, [config, current]);
+  const tracks = tracking.tracks;
+  const upcoming = accepted.filter((p) => Date.parse(p.los) > current);
+  const currentTelemetry = telemetry(current, passes);
+  async function captureTelemetry() {
+    try {
+      const old = await readHistory();
+      setHistory(
+        await storeHistory({
+          ...old,
+          telemetry: [currentTelemetry, ...old.telemetry],
+        }),
+      );
+      notify("Simulated telemetry snapshot recorded.");
+    } catch (e) {
+      setError(String(e));
+    }
+  }
   const active = accepted.filter(
     (p) => Date.parse(p.aos) <= current && Date.parse(p.los) > current,
   );
   function inspect(p: Pass) {
     setSelected(p);
+    setPlaying(false);
     setMinute(
-      Math.round(((Date.parse(p.aos) + Date.parse(p.los)) / 2 - base) / 60000),
+      Math.max(
+        0,
+        Math.min(
+          hours * 60 - 1 / 3,
+          ((Date.parse(p.aos) + Date.parse(p.los)) / 2 - base) / 60000,
+        ),
+      ),
     );
     setTab("Monitoring");
   }
@@ -172,44 +277,28 @@ function App() {
     setToast(s);
   }
   function edit(kind: "mission" | "station", index: number) {
+    setError("");
     setEditing({ kind, index });
     setDraft({
       ...(kind === "mission" ? config.satellites : config.stations)[index],
     });
   }
   async function persist(next: Config) {
-    const p = await run(next);
+    const p = await run(next, start, hours);
     if (p !== null) {
       notify("Configuration saved. Schedule recalculated.");
       setEditing(null);
     }
   }
   function exportCSV() {
-    const fields = [
-      "satellite",
-      "station",
-      "aos",
-      "los",
-      "maxElevation",
-      "antenna",
-      "status",
-      "reason",
-    ] as const;
-    const csv = [
-      fields.join(","),
-      ...filtered.map((p) =>
-        fields
-          .map((k) => '"' + String(p[k]).replaceAll('"', '""') + '"')
-          .join(","),
-      ),
-    ].join("\n");
+    const csv = planCSV(filtered);
     const u = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const a = document.createElement("a");
     a.href = u;
     a.download = "mission-schedule.csv";
     a.click();
     URL.revokeObjectURL(u);
-    notify("Schedule exported");
+    notify(`${filtered.length} communication windows exported`);
   }
   function worldPath(g: any) {
     const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
@@ -281,7 +370,7 @@ function App() {
                   x2={(p.longitude + 180) * 2}
                   y2={(90 - p.latitude) * 2}
                   stroke={colors[i % 3]}
-                  opacity={0.65 - i * 0.1}
+                  opacity={0.65 - (i % 3) * 0.1}
                   strokeWidth={1.4}
                   strokeDasharray={i ? "4 4" : undefined}
                 />
@@ -332,14 +421,19 @@ function App() {
   const Timeline = () => (
     <div className="timeline">
       <div className="time-axis">
-        <span>RESOURCE</span>
-        {[0, 6, 12, 18, 24]
-          .filter((v) => v <= hours)
-          .map((v) => (
-            <span key={v} style={{ left: `${180 + (v / hours) * 660}px` }}>
-              {String(v).padStart(2, "0")}:00
+        <span className="axis-label">RESOURCE</span>
+        <div className="axis-track">
+          {Array.from({ length: 5 }, (_, i) => i / 4).map((f) => (
+            <span key={f} style={{ left: f * 100 + "%" }}>
+              {new Date(base + f * hours * 3600000).toISOString().slice(11, 16)}
+              <small>
+                {new Date(base + f * hours * 3600000)
+                  .toISOString()
+                  .slice(5, 10)}
+              </small>
             </span>
           ))}
+        </div>
       </div>
       {config.stations.map((st) =>
         Array.from({ length: st.antennas }, (_, i) => (
@@ -427,6 +521,7 @@ function App() {
               </td>
               <td>{p.station}</td>
               <td className="mono">
+                <small>{p.aos.slice(0, 10)}</small>
                 {clock(p.aos).slice(0, 5)} <span className="muted">→</span>{" "}
                 {clock(p.los).slice(0, 5)}
                 <small>
@@ -465,7 +560,7 @@ function App() {
     </div>
   );
   return (
-    <div className="app">
+    <div className={"app screen-" + tab.toLowerCase()}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -490,6 +585,7 @@ function App() {
             ["Pass schedule", "schedule"],
             ["Ground stations", "stations"],
             ["Monitoring", "monitor"],
+            ["Reports", "schedule"],
           ].map(([label, icon]) => (
             <button
               key={label}
@@ -536,11 +632,19 @@ function App() {
           </p>
           <button
             className="reset"
-            onClick={() => {
-              setStart(EPOCH);
-              setHours(24);
-              run(copyInitial(), EPOCH, 24);
-              notify("Sample mission restored");
+            disabled={busy}
+            onClick={async () => {
+              const result = await run(copyInitial(), EPOCH, 24);
+              if (result !== null) {
+                setStart(EPOCH);
+                setHours(24);
+                setFilter("All passes");
+                setStationFilter("All stations");
+                setMinute(100);
+                setMaintStart(EPOCH);
+                setMaintEnd("2000-06-28T06:00");
+                notify("Sample mission restored");
+              }
             }}
           >
             ↺ Reset demo
@@ -579,6 +683,7 @@ function App() {
                       Schedule: "Pass schedule",
                       Stations: "Ground station network",
                       Monitoring: "Mission monitoring",
+                      Reports: "Reports & activity history",
                     } as Record<string, string>
                   )[tab]
                 }
@@ -597,16 +702,49 @@ function App() {
                         "Manage your ground network, antennas, and maintenance windows.",
                       Monitoring:
                         "Replay orbital positions and follow scheduled communication sessions.",
+                      Reports:
+                        "Review generated plans, allocation outcomes, and saved simulated telemetry.",
                     } as Record<string, string>
                   )[tab]
                 }
               </p>
             </div>
             <div className="heading-actions">
+              {(tab === "Missions" || tab === "Stations") && (
+                <button
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() => {
+                    const kind = tab === "Missions" ? "mission" : "station";
+                    setError("");
+                    setEditing({ kind, index: -1 });
+                    setDraft(
+                      kind === "mission"
+                        ? {
+                            ...copyInitial().satellites[0],
+                            name: "Mission " + (config.satellites.length + 1),
+                            priority: 5,
+                          }
+                        : {
+                            name: "Station " + (config.stations.length + 1),
+                            latitude: 0,
+                            longitude: 0,
+                            altitude: 0,
+                            minElevation: 10,
+                            antennas: 1,
+                            band: "UHF",
+                          },
+                    );
+                  }}
+                >
+                  +{" "}
+                  {tab === "Missions" ? "Register mission" : "Register station"}
+                </button>
+              )}
               <button
                 className="button secondary"
                 onClick={exportCSV}
-                disabled={!passes.length}
+                disabled={busy || !filtered.length}
               >
                 ↓ Export schedule
               </button>
@@ -619,7 +757,7 @@ function App() {
               </button>
             </div>
           </div>
-          {error && (
+          {error && !editing && (
             <div role="alert" className="error">
               {error}
             </div>
@@ -640,7 +778,7 @@ function App() {
                   <input
                     aria-label="Planning start"
                     type="datetime-local"
-                    value={start}
+                    value={draftStart}
                     onChange={(e) => setStart(e.target.value)}
                   />
                 </label>
@@ -648,7 +786,7 @@ function App() {
                   Horizon
                   <select
                     aria-label="Planning horizon"
-                    value={hours}
+                    value={draftHours}
                     onChange={(e) => setHours(+e.target.value)}
                   >
                     {[6, 12, 24, 48, 72].map((h) => (
@@ -662,6 +800,13 @@ function App() {
                   SGP4 / SDP4<span>20-second visibility sampling</span>
                 </div>
               </div>
+              {pendingWindow && (
+                <div className="pending-window" role="status">
+                  Planning window changed. Select Generate schedule to apply it;
+                  the displayed plan and replay still use{" "}
+                  {start.replace("T", " ")} UTC for {hours} hours.
+                </div>
+              )}
               <div className="stats">
                 {[
                   {
@@ -742,7 +887,8 @@ function App() {
                       aria-label="Replay time"
                       type="range"
                       min="0"
-                      max={hours * 60 - 1}
+                      max={hours * 60 - 1 / 3}
+                      step={1 / 3}
                       value={minute}
                       onChange={(e) => setMinute(+e.target.value)}
                     />
@@ -786,7 +932,10 @@ function App() {
                           </div>
                           <span className="station-status">
                             {config.maintenance.some(
-                              (m) => m.station === st.name,
+                              (m) =>
+                                m.station === st.name &&
+                                Date.parse(m.start) <= current &&
+                                Date.parse(m.end) > current,
                             )
                               ? "Maintenance"
                               : "Available"}
@@ -844,7 +993,7 @@ function App() {
                   <div className="panel-heading">
                     <h2>
                       Upcoming contacts{" "}
-                      <span className="count">{accepted.length}</span>
+                      <span className="count">{upcoming.length}</span>
                     </h2>
                     <button
                       className="text-button"
@@ -857,7 +1006,12 @@ function App() {
                     </button>
                   </div>
                   <div className="contact-list">
-                    {accepted.slice(0, 4).map((p, i) => (
+                    {!upcoming.length && (
+                      <div className="empty">
+                        No remaining contacts in this replay window.
+                      </div>
+                    )}
+                    {upcoming.slice(0, 4).map((p, i) => (
                       <button
                         key={i}
                         onClick={() => inspect(p)}
@@ -998,7 +1152,16 @@ function App() {
                         <span className="priority">P{s.priority}</span>
                       </div>
                       <h2>{s.name}</h2>
-                      <p>Historical TLE · Vanguard reference orbit</p>
+                      <p>Two-line orbital elements · SGP4 propagation</p>
+                      <span className="pill mission-status">
+                        {active.some((p) => p.satellite === s.name)
+                          ? "IN CONTACT · REPLAY"
+                          : upcoming.some((p) => p.satellite === s.name)
+                            ? "AWAITING CONTACT"
+                            : accepted.some((p) => p.satellite === s.name)
+                              ? "CONTACTS COMPLETED · REPLAY"
+                              : "UNSCHEDULED"}
+                      </span>
                       <dl>
                         <div>
                           <dt>Scheduled contacts</dt>
@@ -1023,6 +1186,20 @@ function App() {
                         onClick={() => edit("mission", i)}
                       >
                         Edit mission & TLE ↗
+                      </button>
+                      <button
+                        className="text-button remove-record"
+                        disabled={busy || config.satellites.length === 1}
+                        onClick={() =>
+                          persist({
+                            ...config,
+                            satellites: config.satellites.filter(
+                              (_, j) => j !== i,
+                            ),
+                          })
+                        }
+                      >
+                        Remove mission
                       </button>
                     </div>
                   </section>
@@ -1098,6 +1275,21 @@ function App() {
                       onClick={() => edit("station", i)}
                     >
                       Configure station ↗
+                    </button>
+                    <button
+                      className="text-button remove-record"
+                      disabled={busy || config.stations.length === 1}
+                      onClick={() =>
+                        persist({
+                          ...config,
+                          stations: config.stations.filter((_, j) => j !== i),
+                          maintenance: config.maintenance.filter(
+                            (m) => m.station !== s.name,
+                          ),
+                        })
+                      }
+                    >
+                      Remove station
                     </button>
                   </section>
                 ))}
@@ -1221,6 +1413,11 @@ function App() {
                     <h2>Satellite ground tracks</h2>
                     <span className="pill">±60 MIN TRAIL</span>
                   </div>
+                  {tracking.error && (
+                    <div role="alert" className="error">
+                      {tracking.error}
+                    </div>
+                  )}
                   <MapView large />
                   <div className="map-controls">
                     <button
@@ -1234,7 +1431,8 @@ function App() {
                       aria-label="Replay time"
                       type="range"
                       min="0"
-                      max={hours * 60 - 1}
+                      max={hours * 60 - 1 / 3}
+                      step={1 / 3}
                       value={minute}
                       onChange={(e) => setMinute(+e.target.value)}
                     />
@@ -1261,25 +1459,28 @@ function App() {
                 <section className="panel telemetry">
                   <div className="panel-heading">
                     <h2>Telemetry</h2>
+                    <button className="text-button" onClick={captureTelemetry}>
+                      Record snapshot
+                    </button>
                     <span className="pill amber">SIMULATED</span>
                   </div>
                   {[
                     [
                       "Battery level",
-                      (75 + 10 * Math.sin(current / 300000)).toFixed(1),
+                      currentTelemetry.battery.toFixed(1),
                       "%",
                       "#80f5c4",
                     ],
                     [
                       "Temperature",
-                      (22 + 4 * Math.cos(current / 200000)).toFixed(1),
+                      currentTelemetry.temperature.toFixed(1),
                       "°C",
                       "#bba6ff",
                     ],
                     [
                       "Signal strength",
                       active.length
-                        ? (-70 + 5 * Math.sin(current / 100000)).toFixed(1)
+                        ? currentTelemetry.signal?.toFixed(1) || "—"
                         : "—",
                       "dBm",
                       "#ffca83",
@@ -1325,12 +1526,23 @@ function App() {
                   <div>
                     <small>AOS / LOS · UTC</small>
                     <b className="mono">
-                      {clock(selected.aos)} → {clock(selected.los)}
+                      {selected.aos.slice(0, 10)} · {clock(selected.aos)} →{" "}
+                      {selected.los.slice(0, 10) !== selected.aos.slice(0, 10)
+                        ? selected.los.slice(0, 10) + " · "
+                        : ""}
+                      {clock(selected.los)}
                     </b>
                   </div>
                   <div>
                     <small>Peak elevation</small>
                     <b>{selected.maxElevation.toFixed(1)}°</b>
+                  </div>
+                  <div>
+                    <small>Rise / set azimuth</small>
+                    <b>
+                      {selected.riseAzimuth.toFixed(1)}° /{" "}
+                      {selected.setAzimuth.toFixed(1)}°
+                    </b>
                   </div>
                   <span
                     className={"pill " + (selected.antenna ? "green" : "amber")}
@@ -1363,6 +1575,170 @@ function App() {
               </section>
             </>
           )}
+          {tab === "Reports" && (
+            <>
+              <div className="info-banner">
+                <Icon name="schedule" />
+                <div>
+                  <b>Planning outcomes, with an audit trail</b>
+                  <p>
+                    Last 25 generated plans and 100 manually recorded telemetry
+                    snapshots. Allocation rate describes scheduling outcomes; it
+                    is not a measured mission success rate.
+                  </p>
+                </div>
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    const u = URL.createObjectURL(
+                      new Blob([JSON.stringify(history, null, 2)], {
+                        type: "application/json",
+                      }),
+                    );
+                    const a = document.createElement("a");
+                    a.href = u;
+                    a.download = "mission-history.json";
+                    a.click();
+                    URL.revokeObjectURL(u);
+                    notify("Activity history exported");
+                  }}
+                >
+                  ↓ Export history
+                </button>
+              </div>
+              <section className="panel">
+                <div className="panel-heading">
+                  <h2>Generated plan history</h2>
+                  <span className="pill">
+                    {history.plans.length} SAVED PLANS
+                  </span>
+                </div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>GENERATED · UTC</th>
+                        <th>PLANNING START · UTC</th>
+                        <th>HORIZON</th>
+                        <th>ALLOCATED / CANDIDATES</th>
+                        <th>ALLOCATION RATE</th>
+                        <th>UTILIZATION</th>
+                        <th>CONFLICTS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.plans.map((r) => (
+                        <tr key={r.id}>
+                          <td>
+                            {r.generatedAt.replace("T", " ").slice(0, 19)}
+                          </td>
+                          <td>{r.start.replace("T", " ").slice(0, 16)}</td>
+                          <td>{r.hours} h</td>
+                          <td>
+                            {r.scheduled} / {r.candidates}
+                          </td>
+                          <td>
+                            {r.candidates
+                              ? ((100 * r.scheduled) / r.candidates).toFixed(1)
+                              : "0.0"}
+                            %
+                          </td>
+                          <td>{r.utilization.toFixed(1)}%</td>
+                          <td>{r.conflicts}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              {history.plans[0] && (
+                <div className="bottom-grid">
+                  <section className="panel">
+                    <div className="panel-heading">
+                      <h2>Latest station utilization</h2>
+                    </div>
+                    {history.plans[0].stations.map((s) => (
+                      <div key={s.name} className="maintenance-row">
+                        <b>{s.name}</b>
+                        <span>{s.scheduled} scheduled contacts</span>
+                        <span className="mono">
+                          {s.utilization.toFixed(1)}% utilization
+                        </span>
+                      </div>
+                    ))}
+                  </section>
+                  <section className="panel">
+                    <div className="panel-heading">
+                      <h2>Latest mission outcomes</h2>
+                    </div>
+                    {history.plans[0].missions.map((m) => (
+                      <div key={m.name} className="maintenance-row">
+                        <b>{m.name}</b>
+                        <span>
+                          {m.scheduled} allocated · {m.rejected} rejected
+                        </span>
+                      </div>
+                    ))}
+                  </section>
+                </div>
+              )}
+              <section className="panel">
+                <div className="panel-heading">
+                  <h2>Telemetry log</h2>
+                  <span className="pill amber">
+                    SIMULATED · {history.telemetry.length} SNAPSHOTS
+                  </span>
+                </div>
+                {!history.telemetry.length ? (
+                  <div className="empty">
+                    Use Record snapshot in Monitoring to save replay telemetry.
+                  </div>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>REPLAY TIME · UTC</th>
+                          <th>BATTERY</th>
+                          <th>TEMPERATURE</th>
+                          <th>SIGNAL</th>
+                          <th>TRACKING SESSIONS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.telemetry.map((t, i) => (
+                          <tr key={t.recordedAt + i}>
+                            <td>{t.time.replace("T", " ").slice(0, 19)}</td>
+                            <td>{t.battery.toFixed(1)}%</td>
+                            <td>{t.temperature.toFixed(1)}°C</td>
+                            <td>
+                              {t.signal === null
+                                ? "No active contact"
+                                : t.signal.toFixed(1) + " dBm"}
+                            </td>
+                            <td>
+                              {t.contacts.length
+                                ? t.contacts
+                                    .map(
+                                      (c) =>
+                                        c.satellite +
+                                        " → " +
+                                        c.station +
+                                        " / Antenna " +
+                                        c.antenna,
+                                    )
+                                    .join("; ")
+                                : "No scheduled session at replay time"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
           <footer>
             <span>
               <span className="live-dot" />{" "}
@@ -1378,31 +1754,58 @@ function App() {
         </main>
       </div>
       {editing && (
-        <div className="modal-backdrop" onClick={() => setEditing(null)}>
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (!busy) {
+              setEditing(null);
+              setError("");
+            }
+          }}
+        >
           <section
             role="dialog"
             aria-modal="true"
             aria-label={
-              editing.kind === "mission" ? "Edit mission" : "Configure station"
+              editing.index === -1
+                ? editing.kind === "mission"
+                  ? "Register mission"
+                  : "Register station"
+                : editing.kind === "mission"
+                  ? "Edit mission"
+                  : "Configure station"
             }
             className="modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="panel-heading">
               <h2>
-                {editing.kind === "mission"
-                  ? "Edit mission"
-                  : "Configure station"}
+                {editing.index === -1
+                  ? editing.kind === "mission"
+                    ? "Register mission"
+                    : "Register station"
+                  : editing.kind === "mission"
+                    ? "Edit mission"
+                    : "Configure station"}
               </h2>
               <button
                 className="icon-button"
                 aria-label="Close dialog"
-                onClick={() => setEditing(null)}
+                disabled={busy}
+                onClick={() => {
+                  setEditing(null);
+                  setError("");
+                }}
               >
                 ×
               </button>
             </div>
             <div className="modal-fields">
+              {error && (
+                <div role="alert" className="error">
+                  {error}
+                </div>
+              )}
               <label>
                 Name
                 <input
@@ -1507,7 +1910,11 @@ function App() {
             <div className="modal-actions">
               <button
                 className="button secondary"
-                onClick={() => setEditing(null)}
+                disabled={busy}
+                onClick={() => {
+                  setEditing(null);
+                  setError("");
+                }}
               >
                 Cancel
               </button>
@@ -1516,9 +1923,20 @@ function App() {
                 disabled={busy}
                 onClick={() => {
                   const c = structuredClone(config);
-                  if (editing.kind === "mission")
-                    c.satellites[editing.index] = draft as Satellite;
-                  else c.stations[editing.index] = draft as Station;
+                  if (editing.kind === "mission") {
+                    if (editing.index === -1)
+                      c.satellites.push(draft as Satellite);
+                    else c.satellites[editing.index] = draft as Satellite;
+                  } else {
+                    if (editing.index === -1) c.stations.push(draft as Station);
+                    else {
+                      const old = c.stations[editing.index].name;
+                      c.stations[editing.index] = draft as Station;
+                      c.maintenance = c.maintenance.map((m) =>
+                        m.station === old ? { ...m, station: draft.name } : m,
+                      );
+                    }
+                  }
                   persist(c);
                 }}
               >
@@ -1531,4 +1949,3 @@ function App() {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);

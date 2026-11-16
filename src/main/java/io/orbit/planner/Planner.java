@@ -68,26 +68,33 @@ public class Planner {
   public void validate(Config c) {
     if (c == null || c.satellites() == null || c.stations() == null || c.maintenance() == null)
       throw new IllegalArgumentException("All configuration lists are required");
+    if (c.satellites().isEmpty() || c.stations().isEmpty())
+      throw new IllegalArgumentException("Keep at least one mission and station");
     if (c.satellites().size() > 20 || c.stations().size() > 20)
       throw new IllegalArgumentException("Demo limit: 20 satellites and stations");
     Set<String> names = new HashSet<>();
     for (var s : c.satellites()) {
-      if (s.name() == null
+      if (s == null) throw new IllegalArgumentException("Mission data is required");
+      if (s == null
+          || s.name() == null
           || s.name().isBlank()
-          || !names.add(s.name())
+          || !names.add(s.name().trim().toLowerCase(java.util.Locale.ROOT))
           || s.priority() < 1
           || s.priority() > 10
           || s.band() == null
           || s.band().isBlank())
         throw new IllegalArgumentException(
             "Unique satellite names, band and priority 1–10 required");
+      if (s.line1() == null || s.line2() == null || !TLE.isFormatOK(s.line1(), s.line2()))
+        throw new IllegalArgumentException("TLE format or checksum is invalid");
       new TLE(s.line1(), s.line2(), utc);
     }
     names.clear();
     for (var s : c.stations())
-      if (s.name() == null
+      if (s == null
+          || s.name() == null
           || s.name().isBlank()
-          || !names.add(s.name())
+          || !names.add(s.name().trim().toLowerCase(java.util.Locale.ROOT))
           || !Double.isFinite(s.latitude())
           || Math.abs(s.latitude()) > 90
           || !Double.isFinite(s.longitude())
@@ -104,7 +111,9 @@ public class Planner {
         throw new IllegalArgumentException(
             "Invalid station coordinates, elevation, band or antenna count");
     for (var m : c.maintenance())
-      if (!names.contains(m.station()) || date(m.end()).compareTo(date(m.start())) <= 0)
+      if (m == null
+          || !c.stations().stream().anyMatch(st -> st.name().equals(m.station()))
+          || date(m.end()).compareTo(date(m.start())) <= 0)
         throw new IllegalArgumentException("Maintenance needs a known station and end after start");
   }
 
@@ -139,7 +148,7 @@ public class Planner {
             }
             max = Math.max(max, el);
             lastAz = az;
-          } else if (aos != null) {
+          } else if (aos != null && t.compareTo(aos) > 0) {
             out.add(
                 new Pass(
                     sat.name(),
@@ -157,7 +166,7 @@ public class Planner {
             aos = null;
           }
         }
-        if (aos != null)
+        if (aos != null && end.compareTo(aos) > 0)
           out.add(
               new Pass(
                   sat.name(),
@@ -195,7 +204,8 @@ public class Planner {
           c.stations().stream().filter(s -> s.name().equals(p.station())).findFirst().orElseThrow();
       String reason = "All compatible antennas occupied";
       int antenna = 0;
-      if (!st.band().equalsIgnoreCase(p.band())) reason = "Incompatible frequency band";
+      if (!st.band().trim().equalsIgnoreCase(p.band().trim()))
+        reason = "Incompatible frequency band";
       else if (c.maintenance().stream()
           .anyMatch(
               m ->

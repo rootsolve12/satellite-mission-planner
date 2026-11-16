@@ -1764,3 +1764,330 @@ input[type="range"] {
     font-size: 11px;
   }
 }
+/* Orbital environment: one quiet visual language across all workspaces. */
+.app {
+  isolation: isolate;
+  background: #070f1c;
+}
+.app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(90deg, #07101ce8 0%, #07101cb8 45%, #07101c35 100%),
+    url("/orbital-background.svg") right top/cover no-repeat;
+  pointer-events: none;
+  z-index: -1;
+}
+.main {
+  background: linear-gradient(180deg, transparent, #070f1c99 70%);
+  min-height: 100vh;
+}
+.sidebar {
+  background: #0a1422f5;
+  border-color: #263d4e;
+}
+.sidebar::after {
+  content: "";
+  position: absolute;
+  bottom: 240px;
+  left: 25px;
+  right: 25px;
+  height: 130px;
+  border: 1px solid #7bd4ca0d;
+  border-radius: 50%;
+  transform: rotate(-32deg);
+  pointer-events: none;
+}
+.sidebar nav,
+.side-bottom {
+  position: relative;
+  z-index: 1;
+}
+header {
+  background: #0b1523c9;
+  border-bottom-color: #28404d;
+  backdrop-filter: blur(16px);
+}
+.page-heading {
+  position: relative;
+  padding: 28px 26px 30px;
+  margin-top: -4px;
+  border: 1px solid #557e8b3d;
+  border-radius: 10px;
+  min-height: 155px;
+  background: linear-gradient(
+    100deg,
+    #102436ed 0%,
+    #112a3b9c 55%,
+    #0b203145 100%
+  );
+  box-shadow:
+    inset 0 1px 0 #d7f6ff08,
+    0 14px 45px #00000017;
+  overflow: hidden;
+}
+.page-heading::before {
+  content: "";
+  position: absolute;
+  width: 470px;
+  height: 470px;
+  right: -125px;
+  top: -345px;
+  border: 1px solid #89d9e837;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 35px #8adbe705,
+    0 0 0 85px #8adbe705;
+  pointer-events: none;
+}
+.page-heading > div {
+  position: relative;
+  z-index: 1;
+}
+.page-heading .eyebrow {
+  color: #92c9c2;
+}
+.page-heading h1 {
+  text-shadow: 0 2px 22px #001221;
+}
+.screen-monitoring .page-heading {
+  background: linear-gradient(100deg, #16263fee, #1a2e4794, #121f3855);
+}
+.screen-missions .page-heading {
+  background: linear-gradient(100deg, #152a3cee, #192c4594, #11253655);
+}
+.screen-stations .page-heading {
+  background: linear-gradient(100deg, #102c31ee, #143a3b80, #102a3150);
+}
+.screen-schedule .page-heading {
+  background: linear-gradient(100deg, #12293aee, #13343e85, #12303a45);
+}
+.panel {
+  background: #101e2bed;
+  border-color: #334e5a8f;
+  box-shadow: 0 8px 32px #00000016;
+}
+.panel-heading {
+  background: #14253675;
+  border-bottom-color: #304a5875;
+}
+.stat {
+  background: linear-gradient(120deg, #1b3440ed, #10202fef);
+  border-color: #3a56639c;
+  box-shadow: inset 0 1px 0 #ecffff05;
+}
+.planning-strip {
+  background: #102031ed;
+  border-color: #36515e;
+}
+.mission-orbit {
+  background:
+    radial-gradient(ellipse at center, #214855b8, #102435e8),
+    url("/orbital-background.svg") center/cover;
+}
+.mission-card,
+.station-card {
+  backdrop-filter: blur(5px);
+}
+.station-card {
+  background: linear-gradient(145deg, #17323ce8, #111e2aef);
+}
+.map {
+  background: #0c2130;
+}
+.pending-window {
+  font-size: 11px;
+  color: #e2d0a5;
+  border: 1px solid #77684966;
+  border-radius: 5px;
+  background: #342e21dd;
+  padding: 11px 15px;
+  margin: -6px 0 18px;
+  line-height: 1.7;
+}
+.remove-record {
+  display: block;
+  margin: 14px auto 0;
+  color: #b88f86;
+  font-size: 10px;
+}
+.remove-record:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.remove-record:hover {
+  color: #f1b2a0;
+}
+.time-axis {
+  display: flex;
+  align-items: start;
+  height: 46px;
+  margin: 0;
+}
+.time-axis .axis-label {
+  position: static;
+  flex: 0 0 160px;
+  padding-top: 14px;
+}
+.axis-track {
+  position: relative;
+  flex: 1;
+  min-width: 660px;
+  height: 46px;
+}
+.axis-track > span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 8px;
+  top: 8px;
+  white-space: nowrap;
+  color: #9cbbc5;
+}
+.axis-track > span:first-child {
+  transform: none;
+}
+.axis-track > span:last-child {
+  transform: translateX(-100%);
+}
+.axis-track small {
+  font-size: 7px;
+  color: #587887;
+  margin-top: 3px;
+}
+.time-axis .axis-track > span:first-child {
+  left: 0;
+  font-family: "IBM Plex Mono", monospace;
+  letter-spacing: 0;
+}
+.modal-fields .error {
+  margin: 0;
+  font-size: 11px;
+}
+.selected-pass {
+  flex-wrap: wrap;
+}
+.modal-backdrop {
+  background: #030c18dd;
+}
+.modal {
+  background: linear-gradient(145deg, #172d3e, #0e1d2c);
+  border-color: #4d7381;
+}
+.form-help {
+  color: #9eb5bf;
+}
+.station-status {
+  line-height: 1.5;
+  text-align: right;
+}
+button:disabled:hover {
+  filter: none;
+}
+input[type="range"] {
+  min-height: 5px;
+}
+.map-controls input {
+  touch-action: pan-y;
+}
+@media (max-width: 1250px) {
+  .page-heading {
+    padding: 23px 20px;
+  }
+  .heading-actions {
+    align-items: stretch;
+  }
+}
+@media (max-width: 720px) {
+  .app::before {
+    background:
+      linear-gradient(180deg, #07101c55, #07101cbd),
+      url("/orbital-background.svg") 68% top/auto 100vh no-repeat;
+  }
+  .page-heading {
+    padding: 23px 17px;
+    margin-bottom: 20px;
+    min-height: 200px;
+  }
+  .page-heading::before {
+    right: -300px;
+    top: -325px;
+  }
+  .page-heading .eyebrow {
+    font-size: 6.5px;
+    max-width: 260px;
+  }
+  .heading-actions {
+    flex-wrap: wrap;
+  }
+  .heading-actions .button {
+    font-size: 9px;
+    padding: 9px 10px;
+  }
+  .sidebar::after {
+    display: none;
+  }
+  .sidebar {
+    background: #0b1624f2;
+  }
+  .pending-window {
+    font-size: 10px;
+  }
+  .selected-pass {
+    padding: 18px;
+  }
+  .selected-pass > div {
+    min-width: 110px;
+  }
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    background: #112334;
+  }
+  .tracking-positions small {
+    white-space: nowrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+.screen-reports .page-heading {
+  background: linear-gradient(100deg, #232a3eee, #17354994, #11253655);
+}
+.info-banner > .button {
+  margin-left: auto;
+}
+.screen-reports .info-banner {
+  flex-wrap: wrap;
+}
+.screen-reports td {
+  font-variant-numeric: tabular-nums;
+}
+.screen-reports .maintenance-row .mono {
+  margin-left: auto;
+}
+.telemetry .panel-heading {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.telemetry .panel-heading .text-button {
+  font-size: 8px;
+}
+.axis-track > span:first-child {
+  position: absolute;
+}
+.screen-reports .table-wrap {
+  max-height: 510px;
+  overflow: auto;
+}
+.mission-status {
+  margin: 3px 0 0;
+  font-size: 7px;
+  background: #17372f;
+  color: #a3d8bb;
+  border-color: #33584a;
+}
