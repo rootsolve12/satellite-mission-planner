@@ -16,6 +16,7 @@ import {
   planningTime,
 } from "./engine";
 import "./style.css";
+import { planCalendar } from "./calendar";
 import {
   History,
   emptyHistory,
@@ -226,6 +227,7 @@ export function App() {
         (filter === "Scheduled" ? p.antenna > 0 : p.antenna === 0)) &&
       (stationFilter === "All stations" || p.station === stationFilter),
   );
+  const bookedCount = filtered.filter((p) => p.antenna > 0).length;
   const tracking = useMemo(() => {
     try {
       return {
@@ -291,14 +293,20 @@ export function App() {
     }
   }
   function exportCSV() {
-    const csv = planCSV(filtered);
-    const u = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    downloadSchedule(planCSV(filtered), "text/csv", "mission-schedule.csv");
+    notify(`${filtered.length} communication windows exported`);
+  }
+  function exportCalendar() {
+    downloadSchedule(planCalendar(filtered), "text/calendar;charset=utf-8", "mission-contacts.ics");
+    notify(`${bookedCount} booked contacts exported to calendar`);
+  }
+  function downloadSchedule(content: string, type: string, filename: string) {
+    const u = URL.createObjectURL(new Blob([content], { type }));
     const a = document.createElement("a");
     a.href = u;
-    a.download = "mission-schedule.csv";
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(u);
-    notify(`${filtered.length} communication windows exported`);
   }
   function worldPath(g: any) {
     const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
@@ -522,8 +530,11 @@ export function App() {
               <td>{p.station}</td>
               <td className="mono">
                 <small>{p.aos.slice(0, 10)}</small>
-                {clock(p.aos).slice(0, 5)} <span className="muted">→</span>{" "}
-                {clock(p.los).slice(0, 5)}
+                {clock(p.aos)} <span className="muted">→</span>{" "}
+                {p.los.slice(0, 10) !== p.aos.slice(0, 10) && (
+                  <>{p.los.slice(0, 10)} · </>
+                )}
+                {clock(p.los)}
                 <small>
                   {((Date.parse(p.los) - Date.parse(p.aos)) / 60000).toFixed(1)}{" "}
                   min contact
@@ -748,6 +759,15 @@ export function App() {
               >
                 ↓ Export schedule
               </button>
+              {tab === "Schedule" && (
+                <button
+                  className="button secondary"
+                  onClick={exportCalendar}
+                  disabled={busy || !bookedCount}
+                >
+                  ↓ Export booked contacts (.ics)
+                </button>
+              )}
               <button
                 className="button primary"
                 disabled={busy}
@@ -1534,6 +1554,10 @@ export function App() {
                     </b>
                   </div>
                   <div>
+                    <small>Contact duration</small>
+                    <b>{((Date.parse(selected.los) - Date.parse(selected.aos)) / 60000).toFixed(1)} min</b>
+                  </div>
+                  <div>
                     <small>Peak elevation</small>
                     <b>{selected.maxElevation.toFixed(1)}°</b>
                   </div>
@@ -1543,6 +1567,10 @@ export function App() {
                       {selected.riseAzimuth.toFixed(1)}° /{" "}
                       {selected.setAzimuth.toFixed(1)}°
                     </b>
+                  </div>
+                  <div>
+                    <small>{selected.antenna ? "Assignment" : "Conflict reason"}</small>
+                    <b>{selected.antenna ? `Antenna ${selected.antenna} · ${selected.band}` : selected.reason}</b>
                   </div>
                   <span
                     className={"pill " + (selected.antenna ? "green" : "amber")}
