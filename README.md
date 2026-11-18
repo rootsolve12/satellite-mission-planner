@@ -12,7 +12,7 @@ The interface uses a locally bundled Earth-horizon and orbital-grid background. 
 1. Open the Overview: a 24-hour sample schedule is generated automatically.
 2. Use Mission planning → Register mission to add a satellite, or Edit mission to change a priority. Save and recalculate to compare allocation winners.
 3. Use Ground stations → Register station to add a ground facility, or configure an existing station to change antenna capacity, frequency bands or minimum elevation; add maintenance to block a station.
-4. Use Pass schedule to filter conflicts or scheduled passes and select a contact.
+4. Use Pass schedule to filter conflicts or scheduled passes and select a contact. Export filtered windows as CSV or export booked contacts matching the filters as a UTC calendar (.ics).
 5. In Monitoring, play or scrub the orbital replay and inspect the selected session.
 6. Use Reports to inspect saved planning outcomes, station utilization and mission allocation counts. Record simulated telemetry snapshots from Monitoring, then export history as JSON.
 7. Reset demo restores the sample configuration. Reports retain the last 25 plans and 100 telemetry snapshots.
@@ -78,7 +78,7 @@ Battery, temperature and signal are simulated. Signal appears only during a sche
 
 ## Validation and attribution
 
-Run `npm test --prefix frontend` for 21 frontend interaction/engine tests and `mvn test` for 8 Java tests. The build script and GitHub Actions run both suites.
+Run `npm test --prefix frontend` for frontend interaction and engine tests, and `mvn test` for 8 Java tests. The build script and GitHub Actions run both suites.
 
 Java tests cover published Vallado epoch position, visibility generation, conflict-free reservations, priority, boundaries, maintenance, band compatibility and invalid input. Browser engine checks cover prediction, non-overlap, priority changes, maintenance, incompatible bands, ground-track generation and validation. TypeScript and production builds run during verification.
 

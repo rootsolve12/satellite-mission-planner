@@ -47,6 +47,8 @@ it("navigates all screens, filters contacts and exports only visible records", a
     screen.getByLabelText("Ground station filter"),
     "Chennai",
   );
+  const calendar = screen.getByRole<HTMLButtonElement>("button", { name: /Export booked contacts/ });
+  expect(calendar.disabled).toBe(true);
   const rows = screen.getAllByRole("row").slice(1);
   expect(rows.length).toBeGreaterThan(0);
   expect(
@@ -63,6 +65,13 @@ it("navigates all screens, filters contacts and exports only visible records", a
   expect(click).toHaveBeenCalled();
   expect(URL.createObjectURL).toHaveBeenCalled();
   expect(screen.getByRole("status").textContent).toContain("exported");
+  await user.selectOptions(screen.getByLabelText("Pass status"), "Scheduled");
+  expect(calendar.disabled).toBe(false);
+  click.mockImplementation(function (this: HTMLAnchorElement) {
+    expect(this.download).toBe("mission-contacts.ics");
+  });
+  await user.click(calendar);
+  expect(screen.getByRole("status").textContent).toContain("booked contacts exported to calendar");
 });
 it("keeps draft planning windows separate, rejects an empty date, applies horizon and resets", async () => {
   const user = await ready();
@@ -195,6 +204,8 @@ it("inspects active pass geometry, replays, records telemetry and clears stale s
     "Mission monitoring",
   );
   expect(screen.getByText("Rise / set azimuth")).toBeTruthy();
+  expect(screen.getByText("Contact duration")).toBeTruthy();
+  expect(screen.getByText(/Antenna \d+ · UHF/)).toBeTruthy();
   expect(screen.getAllByText("ACTIVE IN REPLAY").length).toBeGreaterThan(0);
   const before = Number(
     (screen.getByLabelText("Replay time") as HTMLInputElement).value,
